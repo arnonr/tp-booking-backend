@@ -17,6 +17,14 @@ import { env } from './utils/env'
 
 const app = new Elysia({ prefix: '/api' })
   .use(cors({ origin: env.FRONTEND_URL, credentials: true }))
+  .onError(({ error, code }) => {
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    const status = code === 'NOT_FOUND' ? 404 : code === 'VALIDATION' ? 400 : 500
+    return new Response(JSON.stringify({ message }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
   .use(auditPlugin)
   .use(authController)
   .use(authCallbackController)

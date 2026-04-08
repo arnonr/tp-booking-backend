@@ -1,10 +1,13 @@
 import { t } from 'elysia'
 
+const datePattern = t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })
+const timePattern = t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' })
+
 export const createBookingSchema = t.Object({
   roomId: t.Number(),
-  bookingDate: t.String(),
-  startTime: t.String(),
-  endTime: t.String(),
+  bookingDate: datePattern,
+  startTime: timePattern,
+  endTime: timePattern,
   purpose: t.String({ minLength: 1, maxLength: 500 }),
   attendeeCount: t.Number({ minimum: 1 }),
   additionalRequirements: t.Optional(t.String({ maxLength: 1000 })),
@@ -17,13 +20,13 @@ export const createBookingSchema = t.Object({
 
 export const createRecurringSchema = t.Object({
   roomId: t.Number(),
-  startDate: t.String(),
-  startTime: t.String(),
-  endTime: t.String(),
+  startDate: datePattern,
+  startTime: timePattern,
+  endTime: timePattern,
   purpose: t.String({ minLength: 1, maxLength: 500 }),
   attendeeCount: t.Number({ minimum: 1 }),
   frequency: t.UnionEnum(['weekly', 'monthly']),
-  untilDate: t.String(),
+  untilDate: datePattern,
   participantIds: t.Optional(t.Array(t.Number())),
   equipmentItems: t.Optional(t.Array(t.Object({
     equipmentId: t.Number(),
@@ -32,9 +35,9 @@ export const createRecurringSchema = t.Object({
 })
 
 export const updateBookingSchema = t.Object({
-  bookingDate: t.Optional(t.String()),
-  startTime: t.Optional(t.String()),
-  endTime: t.Optional(t.String()),
+  bookingDate: t.Optional(datePattern),
+  startTime: t.Optional(timePattern),
+  endTime: t.Optional(timePattern),
   purpose: t.Optional(t.String({ minLength: 1, maxLength: 500 })),
   attendeeCount: t.Optional(t.Number({ minimum: 1 })),
   additionalRequirements: t.Optional(t.String({ maxLength: 1000 })),

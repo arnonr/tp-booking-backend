@@ -1,10 +1,83 @@
 import { db } from '../../db/connection'
-import { bookings, bookingParticipants, bookingEquipment } from '../../db/schema'
+import { bookings, bookingParticipants, bookingEquipment, rooms, users } from '../../db/schema'
 import { eq, and, sql, desc } from 'drizzle-orm'
 import type { AuthUser } from '../../middleware/auth.guard'
 
 const CANCEL_BEFORE_HOURS = Number(process.env.CANCEL_BEFORE_HOURS ?? 2)
 const CHECKIN_GRACE_MINUTES = Number(process.env.CHECKIN_GRACE_MINUTES ?? 15)
+
+// ─── Time Helpers ──────────────────────────────────────
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.slice(0, 5).split(':').map(Number)
+  return h * 60 + m
+}
+
+function validateTimes(startTime: string, endTime: string) {
+  if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
+    throw new Error('เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด')
+  }
+}
+
+function validateNotPast(bookingDate: string) {
+  const today = new Date()
+  const todayStr = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-')
+  if (bookingDate < todayStr) {
+    throw new Error('ไม่สามารถจองวันที่ผ่านมาแล้วได้')
+  }
+}
+
+async function validateRoomConstraints(roomId: number, attendeeCount: number, startTime: string, endTime: string) {
+  const [room]: any = await db
+    .select({ capacity: rooms.capacity, openTime: rooms.openTime, closeTime: rooms.closeTime, status: rooms.status })
+    .from(rooms)
+    .where(eq(rooms.id, roomId))
+    .limit(1)
+
+  if (!room) throw new Error('ไม่พบห้องประชุมที่เลือก')
+  if (room.status !== 'active') throw new Error('ห้องประชุมนี้ไม่พร้อมให้บริการในขณะนี้')
+  if (attendeeCount > room.capacity) {
+    throw new Error(`จำนวนผู้เข้าร่วม (${attendeeCount} คน) เกินความจุของห้อง (${room.capacity} คน)`)
+  }
+
+  const openMin = timeToMinutes(room.openTime)
+  const closeMin = timeToMinutes(room.closeTime)
+  const startMin = timeToMinutes(startTime)
+  const endMin = timeToMinutes(endTime)
+
+  if (startMin < openMin || endMin > closeMin) {
+    const open = room.openTime.slice(0, 5)
+    const close = room.closeTime.slice(0, 5)
+    throw new Error(`เวลาจองต้องอยู่ในช่วงเปิดทำการของห้อง (${open}–${close})`)
+  }
+}
+
+// ─── Conflict Check (reusable with tx) ────────────────
+
+function buildConflictConditions(roomId: number, date: string, startTime: string, endTime: string, excludeBookingId?: number) {
+  const conditions: any[] = [
+    eq(bookings.roomId, roomId),
+    eq(bookings.bookingDate as any, date as any),
+    sql`${bookings.status} IN ('pending', 'approved')`,
+    sql`${bookings.startTime} < ${endTime}`,
+    sql`${bookings.endTime} > ${startTime}`,
+  ]
+  if (excludeBookingId) conditions.push(sql`${bookings.id} != ${excludeBookingId}`)
+  return conditions
+}
+
+export async function checkConflict(roomId: number, date: string, startTime: string, endTime: string, excludeBookingId?: number) {
+  const [conflict]: any = await db
+    .select({ id: bookings.id })
+    .from(bookings)
+    .where(and(...buildConflictConditions(roomId, date, startTime, endTime, excludeBookingId)))
+    .limit(1)
+  return !!conflict
+}
 
 // ─── Create Booking ────────────────────────────────────
 
@@ -20,62 +93,52 @@ export async function createBooking(data: {
   participantIds?: number[]
   equipmentItems?: Array<{ equipmentId: number; quantity: number }>
 }) {
-  const conflict = await checkConflict(data.roomId, data.bookingDate, data.startTime, data.endTime)
-  if (conflict) throw new Error('Booking conflict: room is already booked for this time slot')
+  validateTimes(data.startTime, data.endTime)
+  validateNotPast(data.bookingDate)
+  await validateRoomConstraints(data.roomId, data.attendeeCount, data.startTime, data.endTime)
 
-  const result: any = await db.insert(bookings).values({
-    userId: data.userId,
-    roomId: data.roomId,
-    bookingDate: data.bookingDate as any,
-    startTime: data.startTime,
-    endTime: data.endTime,
-    purpose: data.purpose,
-    attendeeCount: data.attendeeCount,
-    additionalRequirements: data.additionalRequirements ?? null,
+  let bookingId: number = 0
+
+  await db.transaction(async (tx) => {
+    const [conflict]: any = await tx
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(and(...buildConflictConditions(data.roomId, data.bookingDate, data.startTime, data.endTime)))
+      .limit(1)
+
+    if (conflict) throw new Error('Booking conflict: room is already booked for this time slot')
+
+    const result: any = await tx.insert(bookings).values({
+      userId: data.userId,
+      roomId: data.roomId,
+      bookingDate: data.bookingDate as any,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      purpose: data.purpose,
+      attendeeCount: data.attendeeCount,
+      additionalRequirements: data.additionalRequirements ?? null,
+    })
+
+    bookingId = Number(result[0].insertId)
+
+    if (data.participantIds?.length) {
+      await tx.insert(bookingParticipants).values(
+        data.participantIds.map((userId) => ({ bookingId, userId })),
+      )
+    }
+
+    if (data.equipmentItems?.length) {
+      await tx.insert(bookingEquipment).values(
+        data.equipmentItems.map((item) => ({
+          bookingId,
+          equipmentId: item.equipmentId,
+          quantity: item.quantity,
+        })),
+      )
+    }
   })
 
-  const bookingId = Number(result[0].insertId)
-
-  if (data.participantIds?.length) {
-    await db.insert(bookingParticipants).values(
-      data.participantIds.map((userId) => ({ bookingId, userId })),
-    )
-  }
-
-  if (data.equipmentItems?.length) {
-    await db.insert(bookingEquipment).values(
-      data.equipmentItems.map((item) => ({
-        bookingId,
-        equipmentId: item.equipmentId,
-        quantity: item.quantity,
-      })),
-    )
-  }
-
   return bookingId
-}
-
-// ─── Conflict Check ───────────────────────────────────
-
-export async function checkConflict(roomId: number, date: string, startTime: string, endTime: string, excludeBookingId?: number) {
-  const conditions = [
-    eq(bookings.roomId, roomId),
-    eq(bookings.bookingDate as any, date as any),
-    sql`${bookings.status} IN ('pending', 'approved')`,
-    sql`${bookings.startTime} < ${endTime}`,
-    sql`${bookings.endTime} > ${startTime}`,
-  ]
-
-  if (excludeBookingId) {
-    conditions.push(sql`${bookings.id} != ${excludeBookingId}`)
-  }
-
-  const [conflict]: any = await db.select({ id: bookings.id })
-    .from(bookings)
-    .where(and(...conditions))
-    .limit(1)
-
-  return !!conflict
 }
 
 // ─── Get Booking ─────────────────────────────────────
@@ -143,6 +206,18 @@ export async function updateBooking(id: number, userId: number, data: {
   const newDate = data.bookingDate ?? booking.bookingDate
   const newStart = data.startTime ?? booking.startTime
   const newEnd = data.endTime ?? booking.endTime
+  const newAttendeeCount = data.attendeeCount ?? booking.attendeeCount
+
+  // Validate times and date only if they changed
+  if (data.startTime !== undefined || data.endTime !== undefined) {
+    validateTimes(newStart, newEnd)
+  }
+  if (data.bookingDate !== undefined) {
+    validateNotPast(newDate)
+  }
+  if (data.startTime !== undefined || data.endTime !== undefined || data.attendeeCount !== undefined) {
+    await validateRoomConstraints(booking.roomId, newAttendeeCount, newStart, newEnd)
+  }
 
   const conflict = await checkConflict(booking.roomId, newDate, newStart, newEnd, id)
   if (conflict) throw new Error('Booking conflict: room is already booked for this time slot')
@@ -211,9 +286,39 @@ export async function getCalendar(params: { roomId?: number; dateFrom: string; d
   ]
   if (params.roomId) conditions.push(eq(bookings.roomId, params.roomId))
 
-  return db.select().from(bookings)
+  const rows = await db
+    .select({
+      id: bookings.id,
+      userId: bookings.userId,
+      roomId: bookings.roomId,
+      bookingDate: bookings.bookingDate,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      purpose: bookings.purpose,
+      attendeeCount: bookings.attendeeCount,
+      additionalRequirements: bookings.additionalRequirements,
+      status: bookings.status,
+      checkedIn: bookings.checkedIn,
+      room: {
+        id: rooms.id,
+        name: rooms.name,
+        building: rooms.building,
+        floor: rooms.floor,
+        capacity: rooms.capacity,
+      },
+      user: {
+        id: users.id,
+        fullName: users.fullName,
+        department: users.department,
+      },
+    })
+    .from(bookings)
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
+    .leftJoin(users, eq(bookings.userId, users.id))
     .where(and(...conditions))
-    .orderBy(bookings.bookingDate, bookings.startTime) as any
+    .orderBy(bookings.bookingDate, bookings.startTime)
+
+  return rows
 }
 
 // ─── Recurring Booking ──────────────────────────────
@@ -231,13 +336,21 @@ export async function createRecurringBooking(data: {
   participantIds?: number[]
   equipmentItems?: Array<{ equipmentId: number; quantity: number }>
 }) {
+  validateTimes(data.startTime, data.endTime)
+  validateNotPast(data.startDate)
+  await validateRoomConstraints(data.roomId, data.attendeeCount, data.startTime, data.endTime)
+
   const recurringGroupId = crypto.randomUUID()
   const dates = generateRecurringDates(data.startDate, data.untilDate, data.frequency)
   const createdIds: number[] = []
+  const skippedDates: string[] = []
 
   for (const date of dates) {
     const conflict = await checkConflict(data.roomId, date, data.startTime, data.endTime)
-    if (conflict) continue
+    if (conflict) {
+      skippedDates.push(date)
+      continue
+    }
 
     const result: any = await db.insert(bookings).values({
       userId: data.userId,
@@ -270,7 +383,7 @@ export async function createRecurringBooking(data: {
     }
   }
 
-  return { recurringGroupId, createdCount: createdIds.length, bookingIds: createdIds }
+  return { recurringGroupId, createdCount: createdIds.length, bookingIds: createdIds, skippedDates }
 }
 
 function generateRecurringDates(startDate: string, untilDate: string, frequency: 'weekly' | 'monthly'): string[] {
