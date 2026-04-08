@@ -1,0 +1,38 @@
+import { Elysia } from 'elysia'
+import { cors } from '@elysiajs/cors'
+import { staticPlugin } from '@elysiajs/static'
+import { authController, authCallbackController, authLogoutController, authMeController } from './modules/auth/auth.controller'
+import { usersController } from './modules/users/users.controller'
+import { roomsController } from './modules/rooms/rooms.controller'
+import { bookingsController } from './modules/bookings/bookings.controller'
+import { approvalsController } from './modules/approvals/approvals.controller'
+import { externalRequestsController } from './modules/external-requests/external-requests.controller'
+import { notificationsController } from './modules/notifications/notifications.controller'
+import { equipmentController } from './modules/equipment/equipment.controller'
+import { feedbackController } from './modules/feedback/feedback.controller'
+import { reportsController } from './modules/reports/reports.controller'
+import { auditLogsController } from './modules/audit-logs/audit-logs.controller'
+import { auditPlugin } from './middleware/audit.plugin'
+import { env } from './utils/env'
+
+const app = new Elysia({ prefix: '/api' })
+  .use(cors({ origin: env.FRONTEND_URL, credentials: true }))
+  .use(auditPlugin)
+  .use(authController)
+  .use(authCallbackController)
+  .use(authLogoutController)
+  .use(authMeController)
+  .use(usersController)
+  .use(roomsController)
+  .use(bookingsController)
+  .use(approvalsController)
+  .use(externalRequestsController)
+  .use(notificationsController)
+  .use(equipmentController)
+  .use(feedbackController)
+  .use(reportsController)
+  .use(auditLogsController)
+  .get('/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+  .listen(env.APP_PORT)
+
+console.log(`🚀 Server running at http://localhost:${app.server!.port}`)

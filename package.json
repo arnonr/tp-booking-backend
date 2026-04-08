@@ -1,0 +1,32 @@
+{
+  "name": "tp-booking-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "bun run src/db/seed.ts",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "elysia": "^1.3",
+    "@elysiajs/cors": "^1.3",
+    "@elysiajs/jwt": "^1.3",
+    "@elysiajs/static": "^1.2",
+    "drizzle-orm": "^0.44",
+    "mysql2": "^3.14",
+    "zod": "^3.25",
+    "bcryptjs": "^2.4",
+    "nodemailer": "^7.0",
+    "cron": "^4.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4",
+    "@types/nodemailer": "^6.4",
+    "bun-types": "^1.3.11",
+    "drizzle-kit": "^0.31",
+    "typescript": "^5.8"
+  }
+}
