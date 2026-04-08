@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia'
+import { mkdirSync } from 'fs'
 import { authGuard } from '../../middleware/auth.guard'
 import type { AuthUser } from '../../middleware/auth.guard'
 import {
@@ -6,6 +7,7 @@ import {
   addRoomImage, deleteRoomImage, setRoomAmenities, getRoomAvailability,
 } from './rooms.service'
 import { createRoomSchema, updateRoomSchema, updateAmenitiesSchema, imageUploadSchema, availabilityQuerySchema } from './rooms.schema'
+import { env } from '../../utils/env'
 
 export const roomsController = new Elysia({ prefix: '/rooms' })
   // ─── Public Routes ──────────────────────────────────
@@ -65,8 +67,19 @@ export const roomsController = new Elysia({ prefix: '/rooms' })
   // ─── Images ─────────────────────────────────────────
   .post('/:id/images', async (ctx: any) => {
     const roomId = Number(ctx.params.id)
-    const imageId = await addRoomImage(roomId, ctx.body.imageUrl, ctx.body.sortOrder)
-    return { id: imageId, message: 'Image uploaded' }
+    mkdirSync(env.UPLOAD_DIR, { recursive: true })
+    const raw = ctx.body.images
+    const files: File[] = Array.isArray(raw) ? raw : [raw]
+    const ids: number[] = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+      const filename = `room-${roomId}-${Date.now()}-${i}.${ext}`
+      await Bun.write(`${env.UPLOAD_DIR}/${filename}`, file)
+      const id = await addRoomImage(roomId, `/uploads/${filename}`, i)
+      ids.push(id)
+    }
+    return { ids, message: 'Images uploaded' }
   }, {
     params: t.Object({ id: t.String() }),
     body: imageUploadSchema,

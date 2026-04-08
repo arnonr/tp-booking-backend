@@ -12,10 +12,11 @@ import { equipmentController } from './modules/equipment/equipment.controller'
 import { feedbackController } from './modules/feedback/feedback.controller'
 import { reportsController } from './modules/reports/reports.controller'
 import { auditLogsController } from './modules/audit-logs/audit-logs.controller'
+import { amenitiesController } from './modules/amenities/amenities.controller'
 import { auditPlugin } from './middleware/audit.plugin'
 import { env } from './utils/env'
 
-const app = new Elysia({ prefix: '/api' })
+const api = new Elysia({ prefix: '/api' })
   .use(cors({ origin: env.FRONTEND_URL, credentials: true }))
   .onError(({ error, code }) => {
     const message = error instanceof Error ? error.message : 'Internal server error'
@@ -32,6 +33,7 @@ const app = new Elysia({ prefix: '/api' })
   .use(authMeController)
   .use(usersController)
   .use(roomsController)
+  .use(amenitiesController)
   .use(bookingsController)
   .use(approvalsController)
   .use(externalRequestsController)
@@ -41,6 +43,10 @@ const app = new Elysia({ prefix: '/api' })
   .use(reportsController)
   .use(auditLogsController)
   .get('/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+
+const app = new Elysia()
+  .use(staticPlugin({ assets: env.UPLOAD_DIR, prefix: '/uploads' }))
+  .use(api)
   .listen(env.APP_PORT)
 
 console.log(`🚀 Server running at http://localhost:${app.server!.port}`)

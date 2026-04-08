@@ -19,8 +19,7 @@ export const updateAmenitiesSchema = t.Object({
 })
 
 export const imageUploadSchema = t.Object({
-  imageUrl: t.String({ minLength: 1 }),
-  sortOrder: t.Optional(t.Number()),
+  images: t.Files({ type: 'image/', maxSize: '10m' }),
 })
 
 export const availabilityQuerySchema = t.Object({
