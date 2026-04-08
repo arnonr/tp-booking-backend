@@ -16,6 +16,7 @@ export async function createBooking(data: {
   endTime: string
   purpose: string
   attendeeCount: number
+  additionalRequirements?: string
   participantIds?: number[]
   equipmentItems?: Array<{ equipmentId: number; quantity: number }>
 }) {
@@ -30,6 +31,7 @@ export async function createBooking(data: {
     endTime: data.endTime,
     purpose: data.purpose,
     attendeeCount: data.attendeeCount,
+    additionalRequirements: data.additionalRequirements ?? null,
   })
 
   const bookingId = Number(result[0].insertId)
@@ -119,6 +121,42 @@ export async function listBookings(params: {
     .offset(offset)
 
   return { data: rows, pagination: { page, limit } }
+}
+
+// ─── Update Booking ──────────────────────────────────
+
+export async function updateBooking(id: number, userId: number, data: {
+  bookingDate?: string
+  startTime?: string
+  endTime?: string
+  purpose?: string
+  attendeeCount?: number
+  additionalRequirements?: string
+}) {
+  const [booking]: any = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1)
+  if (!booking) throw new Error('Booking not found')
+  if (booking.userId !== userId) throw new Error('Forbidden')
+  if (!['pending', 'approved'].includes(booking.status)) {
+    throw new Error(`Cannot edit booking with status: ${booking.status}`)
+  }
+
+  const newDate = data.bookingDate ?? booking.bookingDate
+  const newStart = data.startTime ?? booking.startTime
+  const newEnd = data.endTime ?? booking.endTime
+
+  const conflict = await checkConflict(booking.roomId, newDate, newStart, newEnd, id)
+  if (conflict) throw new Error('Booking conflict: room is already booked for this time slot')
+
+  await db.update(bookings).set({
+    ...(data.bookingDate !== undefined && { bookingDate: data.bookingDate as any }),
+    ...(data.startTime !== undefined && { startTime: data.startTime }),
+    ...(data.endTime !== undefined && { endTime: data.endTime }),
+    ...(data.purpose !== undefined && { purpose: data.purpose }),
+    ...(data.attendeeCount !== undefined && { attendeeCount: data.attendeeCount }),
+    ...(data.additionalRequirements !== undefined && { additionalRequirements: data.additionalRequirements }),
+  }).where(eq(bookings.id, id)) as any
+
+  return getBookingById(id)
 }
 
 // ─── Cancel Booking ──────────────────────────────────

@@ -2,11 +2,22 @@ import { Elysia, t } from 'elysia'
 import { authGuard } from '../../middleware/auth.guard'
 import type { AuthUser } from '../../middleware/auth.guard'
 import {
-  listBookings, getBookingById, createBooking, cancelBooking, checkIn, getCalendar, createRecurringBooking,
+  listBookings, getBookingById, createBooking, updateBooking, cancelBooking, checkIn, getCalendar, createRecurringBooking,
 } from './bookings.service'
-import { createBookingSchema, createRecurringSchema, calendarQuerySchema } from './bookings.schema'
+import { createBookingSchema, updateBookingSchema, createRecurringSchema, calendarQuerySchema } from './bookings.schema'
 
 export const bookingsController = new Elysia({ prefix: '/bookings' })
+  // GET /api/bookings/calendar — public, no auth required
+  .get('/calendar', async (ctx: any) => {
+    return getCalendar({
+      roomId: ctx.query.roomId ? Number(ctx.query.roomId) : undefined,
+      dateFrom: ctx.query.dateFrom,
+      dateTo: ctx.query.dateTo,
+    })
+  }, {
+    query: calendarQuerySchema,
+  })
+
   .use(authGuard())
 
   // GET /api/bookings — list bookings (employee: own, admin: all)
@@ -32,17 +43,6 @@ export const bookingsController = new Elysia({ prefix: '/bookings' })
     }),
   })
 
-  // GET /api/bookings/calendar
-  .get('/calendar', async (ctx: any) => {
-    return getCalendar({
-      roomId: ctx.query.roomId ? Number(ctx.query.roomId) : undefined,
-      dateFrom: ctx.query.dateFrom,
-      dateTo: ctx.query.dateTo,
-    })
-  }, {
-    query: calendarQuerySchema,
-  })
-
   // GET /api/bookings/:id
   .get('/:id', async ({ params }: any) => {
     const booking = await getBookingById(Number(params.id))
@@ -66,10 +66,21 @@ export const bookingsController = new Elysia({ prefix: '/bookings' })
       endTime: ctx.body.endTime,
       purpose: ctx.body.purpose,
       attendeeCount: ctx.body.attendeeCount,
+      additionalRequirements: ctx.body.additionalRequirements,
     })
     return { id, message: 'Booking created' }
   }, {
     body: createBookingSchema,
+  })
+
+  // PATCH /api/bookings/:id — edit booking
+  .patch('/:id', async (ctx: any) => {
+    const user: AuthUser = ctx.user
+    const booking = await updateBooking(Number(ctx.params.id), user.id, ctx.body)
+    return booking
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: updateBookingSchema,
   })
 
   // PATCH /api/bookings/:id/cancel

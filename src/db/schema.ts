@@ -77,6 +77,7 @@ export const bookings = mysqlTable('bookings', {
   approvedAt: timestamp('approved_at'),
   checkedIn: boolean('checked_in').default(false),
   checkedInAt: timestamp('checked_in_at'),
+  additionalRequirements: text('additional_requirements'),
   recurringGroupId: varchar('recurring_group_id', { length: 36 }),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
