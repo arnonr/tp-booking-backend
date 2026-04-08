@@ -76,7 +76,7 @@ export const bookingsController = new Elysia({ prefix: '/bookings' })
   // PATCH /api/bookings/:id — edit booking
   .patch('/:id', async (ctx: any) => {
     const user: AuthUser = ctx.user
-    const booking = await updateBooking(Number(ctx.params.id), user.id, ctx.body)
+    const booking = await updateBooking(Number(ctx.params.id), { id: user.id, role: user.role }, ctx.body)
     return booking
   }, {
     params: t.Object({ id: t.String() }),

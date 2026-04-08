@@ -1,5 +1,5 @@
 import { db } from '../../db/connection'
-import { bookings, notifications } from '../../db/schema'
+import { bookings, notifications, users, rooms } from '../../db/schema'
 import { eq, and, sql, desc } from 'drizzle-orm'
 
 import type { AuthUser } from '../../middleware/auth.guard'
@@ -25,18 +25,53 @@ export async function listPending(params: {
   if (params.dateFrom) conditions.push(sql`${bookings.bookingDate} >= ${params.dateFrom}`)
   if (params.dateTo) conditions.push(sql`${bookings.bookingDate} <= ${params.dateTo}`)
 
-  const rows = await db.select().from(bookings)
+  const rows = await db
+    .select({
+      id: bookings.id,
+      userId: bookings.userId,
+      roomId: bookings.roomId,
+      bookingDate: bookings.bookingDate,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      purpose: bookings.purpose,
+      attendeeCount: bookings.attendeeCount,
+      additionalRequirements: bookings.additionalRequirements,
+      status: bookings.status,
+      adminRemark: bookings.adminRemark,
+      approvedBy: bookings.approvedBy,
+      approvedAt: bookings.approvedAt,
+      checkedIn: bookings.checkedIn,
+      checkedInAt: bookings.checkedInAt,
+      recurringGroupId: bookings.recurringGroupId,
+      createdAt: bookings.createdAt,
+      user: {
+        id: users.id,
+        fullName: users.fullName,
+        department: users.department,
+        email: users.email,
+      },
+      room: {
+        id: rooms.id,
+        name: rooms.name,
+        building: rooms.building,
+        floor: rooms.floor,
+        capacity: rooms.capacity,
+      },
+    })
+    .from(bookings)
+    .leftJoin(users, eq(bookings.userId, users.id))
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(and(...conditions))
     .orderBy(desc(bookings.createdAt))
     .limit(limit)
     .offset(offset) as any
 
-  const total = await db.select({ count: sql`count(*)` }).from(bookings)
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(bookings)
     .where(and(...conditions)) as any
 
   return {
     data: rows,
-    pagination: { page, limit, total: total.length },
+    pagination: { page, limit, total: Number(count) },
   }
 }
 

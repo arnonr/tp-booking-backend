@@ -247,31 +247,52 @@ export async function listBookings(params: {
         capacity: rooms.capacity,
         status: rooms.status,
       },
+      user: {
+        id: users.id,
+        fullName: users.fullName,
+        department: users.department,
+        email: users.email,
+      },
     })
     .from(bookings)
     .leftJoin(rooms, eq(bookings.roomId, rooms.id))
+    .leftJoin(users, eq(bookings.userId, users.id))
     .where(where)
     .orderBy(desc(bookings.createdAt))
     .limit(limit)
     .offset(offset)
 
-  return { data: rows, pagination: { page, limit } }
+  const [countRow]: any = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(bookings)
+    .where(where)
+
+  return { data: rows, pagination: { page, limit, total: Number(countRow.total) } }
 }
 
 // ─── Update Booking ──────────────────────────────────
 
-export async function updateBooking(id: number, userId: number, data: {
-  bookingDate?: string
-  startTime?: string
-  endTime?: string
-  purpose?: string
-  attendeeCount?: number
-  additionalRequirements?: string
-}) {
+export async function updateBooking(
+  id: number,
+  user: { id: number; role: string },
+  data: {
+    bookingDate?: string
+    startTime?: string
+    endTime?: string
+    purpose?: string
+    attendeeCount?: number
+    additionalRequirements?: string
+  },
+) {
   const [booking]: any = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1)
   if (!booking) throw new Error('Booking not found')
-  if (booking.userId !== userId) throw new Error('Forbidden')
-  if (!['pending', 'approved'].includes(booking.status)) {
+
+  if (user.role !== 'admin' && booking.userId !== user.id) throw new Error('Forbidden')
+
+  const editableStatuses = user.role === 'admin'
+    ? ['pending', 'approved', 'rejected']
+    : ['pending', 'approved']
+  if (!editableStatuses.includes(booking.status)) {
     throw new Error(`Cannot edit booking with status: ${booking.status}`)
   }
 
