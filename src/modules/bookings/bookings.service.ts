@@ -369,6 +369,35 @@ export async function checkIn(id: number, userId: number) {
   }).where(eq(bookings.id, id)) as any
 }
 
+// ─── Revert Booking Status (admin) ──────────────────
+
+export async function revertBooking(id: number, targetStatus: string) {
+  const allowedTargets = ['pending', 'approved']
+  if (!allowedTargets.includes(targetStatus)) {
+    throw new Error(`ย้อนสถานะได้เฉพาะ: ${allowedTargets.join(', ')}`)
+  }
+
+  const [booking]: any = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1)
+  if (!booking) throw new Error('ไม่พบการจอง')
+
+  if (!['rejected', 'cancelled', 'completed'].includes(booking.status)) {
+    throw new Error(`สถานะปัจจุบัน "${booking.status}" ไม่สามารถย้อนกลับได้`)
+  }
+
+  // If reverting to approved, check for time conflicts
+  if (targetStatus === 'approved') {
+    const conflict = await checkConflict(booking.roomId, booking.bookingDate, booking.startTime, booking.endTime, id)
+    if (conflict) throw new Error('ไม่สามารถย้อนกลับได้: มีการจองอื่นทับซ้อนในช่วงเวลานี้')
+  }
+
+  await db.update(bookings).set({
+    status: targetStatus as any,
+    ...(targetStatus === 'approved' && { approvedAt: new Date() }),
+  }).where(eq(bookings.id, id)) as any
+
+  return getBookingById(id)
+}
+
 // ─── Calendar View ───────────────────────────────────
 
 export async function getCalendar(params: { roomId?: number; dateFrom: string; dateTo: string }) {

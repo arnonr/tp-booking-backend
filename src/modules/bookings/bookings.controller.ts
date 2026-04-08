@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia'
 import { authGuard } from '../../middleware/auth.guard'
 import type { AuthUser } from '../../middleware/auth.guard'
 import {
-  listBookings, getBookingById, createBooking, updateBooking, cancelBooking, checkIn, getCalendar, createRecurringBooking,
+  listBookings, getBookingById, createBooking, updateBooking, cancelBooking, revertBooking, checkIn, getCalendar, createRecurringBooking,
 } from './bookings.service'
 import { createBookingSchema, updateBookingSchema, createRecurringSchema, calendarQuerySchema } from './bookings.schema'
 
@@ -90,6 +90,19 @@ export const bookingsController = new Elysia({ prefix: '/bookings' })
     return { message: 'Booking cancelled' }
   }, {
     params: t.Object({ id: t.String() }),
+  })
+
+  // PATCH /api/bookings/:id/revert — admin revert terminal status
+  .patch('/:id/revert', async (ctx: any) => {
+    const user: AuthUser = ctx.user
+    if (user.role !== 'admin') throw new Error('Admin only')
+    const booking = await revertBooking(Number(ctx.params.id), ctx.body.status)
+    return booking
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: t.Object({
+      status: t.UnionEnum(['pending', 'approved']),
+    }),
   })
 
   // POST /api/bookings/:id/checkin
