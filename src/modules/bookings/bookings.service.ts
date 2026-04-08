@@ -144,8 +144,51 @@ export async function createBooking(data: {
 // ─── Get Booking ─────────────────────────────────────
 
 export async function getBookingById(id: number) {
-  const [booking]: any = await db.select().from(bookings).where(eq(bookings.id, id)).limit(1)
-  if (!booking) return null
+  const rows: any = await db
+    .select({
+      id: bookings.id,
+      userId: bookings.userId,
+      roomId: bookings.roomId,
+      bookingDate: bookings.bookingDate,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      purpose: bookings.purpose,
+      attendeeCount: bookings.attendeeCount,
+      additionalRequirements: bookings.additionalRequirements,
+      status: bookings.status,
+      adminRemark: bookings.adminRemark,
+      approvedBy: bookings.approvedBy,
+      approvedAt: bookings.approvedAt,
+      checkedIn: bookings.checkedIn,
+      checkedInAt: bookings.checkedInAt,
+      recurringGroupId: bookings.recurringGroupId,
+      createdAt: bookings.createdAt,
+      room: {
+        id: rooms.id,
+        name: rooms.name,
+        building: rooms.building,
+        floor: rooms.floor,
+        capacity: rooms.capacity,
+        status: rooms.status,
+        description: rooms.description,
+      },
+      user: {
+        id: users.id,
+        fullName: users.fullName,
+        username: users.username,
+        email: users.email,
+        department: users.department,
+        phone: users.phone,
+      },
+    })
+    .from(bookings)
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
+    .leftJoin(users, eq(bookings.userId, users.id))
+    .where(eq(bookings.id, id))
+    .limit(1)
+
+  if (!rows.length) return null
+  const booking = rows[0]
 
   const participants = await db.select().from(bookingParticipants).where(eq(bookingParticipants.bookingId, id))
   const equipment = await db.select().from(bookingEquipment).where(eq(bookingEquipment.bookingId, id))
@@ -177,7 +220,36 @@ export async function listBookings(params: {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined
 
-  const rows: any = await db.select().from(bookings)
+  const rows: any = await db
+    .select({
+      id: bookings.id,
+      userId: bookings.userId,
+      roomId: bookings.roomId,
+      bookingDate: bookings.bookingDate,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      purpose: bookings.purpose,
+      attendeeCount: bookings.attendeeCount,
+      additionalRequirements: bookings.additionalRequirements,
+      status: bookings.status,
+      adminRemark: bookings.adminRemark,
+      approvedBy: bookings.approvedBy,
+      approvedAt: bookings.approvedAt,
+      checkedIn: bookings.checkedIn,
+      checkedInAt: bookings.checkedInAt,
+      recurringGroupId: bookings.recurringGroupId,
+      createdAt: bookings.createdAt,
+      room: {
+        id: rooms.id,
+        name: rooms.name,
+        building: rooms.building,
+        floor: rooms.floor,
+        capacity: rooms.capacity,
+        status: rooms.status,
+      },
+    })
+    .from(bookings)
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(where)
     .orderBy(desc(bookings.createdAt))
     .limit(limit)
