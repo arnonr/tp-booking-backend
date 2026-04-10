@@ -47,6 +47,6 @@ const api = new Elysia({ prefix: '/api' })
 const app = new Elysia()
   .use(staticPlugin({ assets: env.UPLOAD_DIR, prefix: '/uploads' }))
   .use(api)
-  .listen(env.APP_PORT)
+  .listen({ port: env.APP_PORT, hostname: '0.0.0.0' })
 
 console.log(`🚀 Server running at http://localhost:${app.server!.port}`)
