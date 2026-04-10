@@ -76,7 +76,7 @@ export const roomsController = new Elysia({ prefix: '/rooms' })
       const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
       const filename = `room-${roomId}-${Date.now()}-${i}.${ext}`
       await Bun.write(`${env.UPLOAD_DIR}/${filename}`, file)
-      const id = await addRoomImage(roomId, `/uploads/${filename}`, i)
+      const id = await addRoomImage(roomId, `/tp-booking-api/uploads/${filename}`, i)
       ids.push(id)
     }
     return { ids, message: 'Images uploaded' }

@@ -45,7 +45,7 @@ const api = new Elysia({ prefix: '/tp-booking-api/api' })
   .get('/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
 const app = new Elysia()
-  .use(staticPlugin({ assets: env.UPLOAD_DIR, prefix: '/uploads' }))
+  .use(staticPlugin({ assets: env.UPLOAD_DIR, prefix: '/tp-booking-api/uploads' }))
   .use(api)
   .listen({ port: env.APP_PORT, hostname: '0.0.0.0' })
 
