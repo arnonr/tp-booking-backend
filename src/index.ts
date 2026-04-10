@@ -16,7 +16,7 @@ import { amenitiesController } from './modules/amenities/amenities.controller'
 import { auditPlugin } from './middleware/audit.plugin'
 import { env } from './utils/env'
 
-const api = new Elysia({ prefix: '/api' })
+const api = new Elysia({ prefix: '/tp-booking-api/api' })
   .use(cors({ origin: env.FRONTEND_URL, credentials: true }))
   .onError(({ error, code }) => {
     const message = error instanceof Error ? error.message : 'Internal server error'
