@@ -24,6 +24,7 @@ export async function listRooms(params?: {
     roomRows = await db.select({
       id: rooms.id, name: rooms.name, building: rooms.building, floor: rooms.floor,
       capacity: rooms.capacity, description: rooms.description, status: rooms.status,
+      color: rooms.color,
       openTime: rooms.openTime, closeTime: rooms.closeTime, slotDurationMin: rooms.slotDurationMin,
     }).from(rooms)
       .innerJoin(roomAmenities, eq(rooms.id, roomAmenities.roomId))
@@ -98,6 +99,7 @@ export async function createRoom(data: {
   capacity: number
   description?: string
   status?: string
+  color?: string
   openTime?: string
   closeTime?: string
   slotDurationMin?: number
@@ -109,6 +111,7 @@ export async function createRoom(data: {
     capacity: data.capacity,
     description: data.description,
     status: (data.status ?? 'active') as any,
+    color: data.color,
     openTime: data.openTime,
     closeTime: data.closeTime,
     slotDurationMin: data.slotDurationMin,
@@ -123,6 +126,7 @@ export async function updateRoom(id: number, data: {
   capacity?: number
   description?: string
   status?: 'active' | 'maintenance' | 'inactive'
+  color?: string
   openTime?: string
   closeTime?: string
   slotDurationMin?: number

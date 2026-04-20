@@ -25,6 +25,7 @@ export const rooms = mysqlTable('rooms', {
   capacity: int('capacity').notNull(),
   description: text('description'),
   status: mysqlEnum('status', ['active', 'maintenance', 'inactive']).default('active'),
+  color: varchar('color', { length: 20 }).default('#3b82f6'),
   openTime: time('open_time').default('08:00:00'),
   closeTime: time('close_time').default('17:00:00'),
   slotDurationMin: int('slot_duration_min').default(60),

@@ -7,6 +7,7 @@ export const createRoomSchema = t.Object({
   capacity: t.Number({ minimum: 1 }),
   description: t.Optional(t.String()),
   status: t.Optional(t.UnionEnum(['active', 'maintenance', 'inactive'])),
+  color: t.Optional(t.String()),
   openTime: t.Optional(t.String()),  // HH:mm
   closeTime: t.Optional(t.String()), // HH:mm
   slotDurationMin: t.Optional(t.Number({ minimum: 15 })),
