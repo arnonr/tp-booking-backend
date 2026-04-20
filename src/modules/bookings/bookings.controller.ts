@@ -62,6 +62,7 @@ export const bookingsController = new Elysia({ prefix: '/bookings' })
       userId: user.id,
       roomId: ctx.body.roomId,
       bookingDate: ctx.body.bookingDate,
+      endDate: ctx.body.endDate,
       startTime: ctx.body.startTime,
       endTime: ctx.body.endTime,
       purpose: ctx.body.purpose,

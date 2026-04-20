@@ -6,6 +6,7 @@ const timePattern = t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' })
 export const createBookingSchema = t.Object({
   roomId: t.Number(),
   bookingDate: datePattern,
+  endDate: t.Optional(datePattern),
   startTime: timePattern,
   endTime: timePattern,
   purpose: t.String({ minLength: 1, maxLength: 500 }),
@@ -36,6 +37,7 @@ export const createRecurringSchema = t.Object({
 
 export const updateBookingSchema = t.Object({
   bookingDate: t.Optional(datePattern),
+  endDate: t.Optional(datePattern),
   startTime: t.Optional(timePattern),
   endTime: t.Optional(timePattern),
   purpose: t.Optional(t.String({ minLength: 1, maxLength: 500 })),

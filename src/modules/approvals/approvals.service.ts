@@ -6,6 +6,14 @@ import type { AuthUser } from '../../middleware/auth.guard'
 
  const CANCEL_BEFORE_HOURS = Number(process.env.CANCEL_BEFORE_HOURS ?? 2)
 
+function formatBookingDateRange(booking: { bookingDate: any; endDate?: any }): string {
+  const start = typeof booking.bookingDate === 'string' ? booking.bookingDate.slice(0, 10) : booking.bookingDate
+  const end = booking.endDate
+    ? (typeof booking.endDate === 'string' ? booking.endDate.slice(0, 10) : booking.endDate)
+    : start
+  return start === end ? `วันที่ ${start}` : `ช่วงวันที่ ${start} ถึง ${end}`
+}
+
 // ─── List Pending Approvals ────────────────────────
 export async function listPending(params: {
   roomId?: number
@@ -22,7 +30,7 @@ export async function listPending(params: {
   const conditions = [eq(bookings.status, 'pending')]
 
   if (params.roomId) conditions.push(eq(bookings.roomId, params.roomId))
-  if (params.dateFrom) conditions.push(sql`${bookings.bookingDate} >= ${params.dateFrom}`)
+  if (params.dateFrom) conditions.push(sql`${bookings.endDate} >= ${params.dateFrom}`)
   if (params.dateTo) conditions.push(sql`${bookings.bookingDate} <= ${params.dateTo}`)
 
   const rows = await db
@@ -31,6 +39,7 @@ export async function listPending(params: {
       userId: bookings.userId,
       roomId: bookings.roomId,
       bookingDate: bookings.bookingDate,
+      endDate: bookings.endDate,
       startTime: bookings.startTime,
       endTime: bookings.endTime,
       purpose: bookings.purpose,
@@ -93,7 +102,7 @@ export async function approveBooking(bookingId: number, adminId: number) {
     bookingId,
     type: 'booking_approved',
     title: 'การจองได้รับการอนุมัติ',
-    message: `การจองห้องของคุณในวันที่ ${booking.bookingDate} ได้รับการอนุมัติแล้ว`,
+    message: `การจองห้องของคุณใน${formatBookingDateRange(booking)} ได้รับการอนุมัติแล้ว`,
   }) as any
 }
 
@@ -116,7 +125,7 @@ export async function rejectBooking(bookingId: number, adminId: number, remark: 
     bookingId,
     type: 'booking_rejected',
     title: 'การจองถูกปฏิเสธ',
-    message: `การจองห้องของคุณในวันที่ ${booking.bookingDate} ถูกปฏิเสธ${remark ? `: ${remark}` : ''}`,
+    message: `การจองห้องของคุณใน${formatBookingDateRange(booking)} ถูกปฏิเสธ${remark ? `: ${remark}` : ''}`,
   }) as any
 }
 

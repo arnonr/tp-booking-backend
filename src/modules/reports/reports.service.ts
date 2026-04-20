@@ -16,10 +16,16 @@ export async function getSummary() {
     .select({ count: sql<number>`count(*)` })
     .from(bookings)
 
+  // Today's bookings: any booking whose range covers today (multi-day aware)
   const [todayBookingsRow]: any = await db
     .select({ count: sql<number>`count(*)` })
     .from(bookings)
-    .where(eq(bookings.bookingDate as any, todayStr as any))
+    .where(
+      and(
+        sql`${bookings.bookingDate} <= ${todayStr}`,
+        sql`${bookings.endDate} >= ${todayStr}`,
+      ),
+    )
 
   const [totalRoomsRow]: any = await db
     .select({ count: sql<number>`count(*)` })
@@ -37,6 +43,7 @@ export async function getSummary() {
     .where(eq(bookings.status as any, 'pending' as any))
 
   // Occupancy rate: ratio of today's booked room-hours to total possible room-hours
+  // Multi-day bookings count for each day their range covers today
   const [occupiedRow]: any = await db
     .select({
       totalSlots: sql<number>`count(*)`,
@@ -44,7 +51,8 @@ export async function getSummary() {
     .from(bookings)
     .where(
       and(
-        eq(bookings.bookingDate as any, todayStr as any),
+        sql`${bookings.bookingDate} <= ${todayStr}`,
+        sql`${bookings.endDate} >= ${todayStr}`,
         sql`${bookings.status} IN ('pending', 'approved')`,
       ),
     )

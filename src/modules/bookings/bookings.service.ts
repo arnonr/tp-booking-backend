@@ -19,6 +19,21 @@ function validateTimes(startTime: string, endTime: string) {
   }
 }
 
+function validateDateRange(startDate: string, endDate: string) {
+  if (endDate < startDate) {
+    throw new Error('วันสิ้นสุดต้องไม่น้อยกว่าวันเริ่มต้น')
+  }
+}
+
+function normalizeDate(d: string | Date): string {
+  if (typeof d === 'string') return d.slice(0, 10)
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 function validateNotPast(bookingDate: string) {
   const today = new Date()
   const todayStr = [
@@ -57,11 +72,15 @@ async function validateRoomConstraints(roomId: number, attendeeCount: number, st
 }
 
 // ─── Conflict Check (reusable with tx) ────────────────
+// Overlap if: existing.bookingDate <= endDate AND existing.endDate >= bookingDate
+// AND existing.startTime < endTime AND existing.endTime > startTime
+// (daily time window applies to every day in each range, per product decision).
 
-function buildConflictConditions(roomId: number, date: string, startTime: string, endTime: string, excludeBookingId?: number) {
+function buildConflictConditions(roomId: number, startDate: string, endDate: string, startTime: string, endTime: string, excludeBookingId?: number) {
   const conditions: any[] = [
     eq(bookings.roomId, roomId),
-    eq(bookings.bookingDate as any, date as any),
+    sql`${bookings.bookingDate} <= ${endDate}`,
+    sql`${bookings.endDate} >= ${startDate}`,
     sql`${bookings.status} IN ('pending', 'approved')`,
     sql`${bookings.startTime} < ${endTime}`,
     sql`${bookings.endTime} > ${startTime}`,
@@ -70,11 +89,11 @@ function buildConflictConditions(roomId: number, date: string, startTime: string
   return conditions
 }
 
-export async function checkConflict(roomId: number, date: string, startTime: string, endTime: string, excludeBookingId?: number) {
+export async function checkConflict(roomId: number, startDate: string, endDate: string, startTime: string, endTime: string, excludeBookingId?: number) {
   const [conflict]: any = await db
     .select({ id: bookings.id })
     .from(bookings)
-    .where(and(...buildConflictConditions(roomId, date, startTime, endTime, excludeBookingId)))
+    .where(and(...buildConflictConditions(roomId, startDate, endDate, startTime, endTime, excludeBookingId)))
     .limit(1)
   return !!conflict
 }
@@ -85,6 +104,7 @@ export async function createBooking(data: {
   userId: number
   roomId: number
   bookingDate: string
+  endDate?: string
   startTime: string
   endTime: string
   purpose: string
@@ -93,7 +113,9 @@ export async function createBooking(data: {
   participantIds?: number[]
   equipmentItems?: Array<{ equipmentId: number; quantity: number }>
 }) {
+  const endDate = data.endDate ?? data.bookingDate
   validateTimes(data.startTime, data.endTime)
+  validateDateRange(data.bookingDate, endDate)
   validateNotPast(data.bookingDate)
   await validateRoomConstraints(data.roomId, data.attendeeCount, data.startTime, data.endTime)
 
@@ -103,7 +125,7 @@ export async function createBooking(data: {
     const [conflict]: any = await tx
       .select({ id: bookings.id })
       .from(bookings)
-      .where(and(...buildConflictConditions(data.roomId, data.bookingDate, data.startTime, data.endTime)))
+      .where(and(...buildConflictConditions(data.roomId, data.bookingDate, endDate, data.startTime, data.endTime)))
       .limit(1)
 
     if (conflict) throw new Error('Booking conflict: room is already booked for this time slot')
@@ -112,6 +134,7 @@ export async function createBooking(data: {
       userId: data.userId,
       roomId: data.roomId,
       bookingDate: data.bookingDate as any,
+      endDate: endDate as any,
       startTime: data.startTime,
       endTime: data.endTime,
       purpose: data.purpose,
@@ -150,6 +173,7 @@ export async function getBookingById(id: number) {
       userId: bookings.userId,
       roomId: bookings.roomId,
       bookingDate: bookings.bookingDate,
+      endDate: bookings.endDate,
       startTime: bookings.startTime,
       endTime: bookings.endTime,
       purpose: bookings.purpose,
@@ -215,7 +239,8 @@ export async function listBookings(params: {
   if (params.userId) conditions.push(eq(bookings.userId, params.userId))
   if (params.status) conditions.push(eq(bookings.status as any, params.status as any))
   if (params.roomId) conditions.push(eq(bookings.roomId, params.roomId))
-  if (params.dateFrom) conditions.push(sql`${bookings.bookingDate} >= ${params.dateFrom}`)
+  // Range overlap on list filter: booking intersects [dateFrom..dateTo]
+  if (params.dateFrom) conditions.push(sql`${bookings.endDate} >= ${params.dateFrom}`)
   if (params.dateTo) conditions.push(sql`${bookings.bookingDate} <= ${params.dateTo}`)
 
   const where = conditions.length > 0 ? and(...conditions) : undefined
@@ -226,6 +251,7 @@ export async function listBookings(params: {
       userId: bookings.userId,
       roomId: bookings.roomId,
       bookingDate: bookings.bookingDate,
+      endDate: bookings.endDate,
       startTime: bookings.startTime,
       endTime: bookings.endTime,
       purpose: bookings.purpose,
@@ -277,6 +303,7 @@ export async function updateBooking(
   user: { id: number; role: string },
   data: {
     bookingDate?: string
+    endDate?: string
     startTime?: string
     endTime?: string
     purpose?: string
@@ -296,7 +323,8 @@ export async function updateBooking(
     throw new Error(`Cannot edit booking with status: ${booking.status}`)
   }
 
-  const newDate = data.bookingDate ?? booking.bookingDate
+  const newStartDate = normalizeDate(data.bookingDate ?? booking.bookingDate)
+  const newEndDate = normalizeDate(data.endDate ?? booking.endDate ?? booking.bookingDate)
   const newStart = data.startTime ?? booking.startTime
   const newEnd = data.endTime ?? booking.endTime
   const newAttendeeCount = data.attendeeCount ?? booking.attendeeCount
@@ -305,18 +333,22 @@ export async function updateBooking(
   if (data.startTime !== undefined || data.endTime !== undefined) {
     validateTimes(newStart, newEnd)
   }
+  if (data.bookingDate !== undefined || data.endDate !== undefined) {
+    validateDateRange(newStartDate, newEndDate)
+  }
   if (data.bookingDate !== undefined) {
-    validateNotPast(newDate)
+    validateNotPast(newStartDate)
   }
   if (data.startTime !== undefined || data.endTime !== undefined || data.attendeeCount !== undefined) {
     await validateRoomConstraints(booking.roomId, newAttendeeCount, newStart, newEnd)
   }
 
-  const conflict = await checkConflict(booking.roomId, newDate, newStart, newEnd, id)
+  const conflict = await checkConflict(booking.roomId, newStartDate, newEndDate, newStart, newEnd, id)
   if (conflict) throw new Error('Booking conflict: room is already booked for this time slot')
 
   await db.update(bookings).set({
     ...(data.bookingDate !== undefined && { bookingDate: data.bookingDate as any }),
+    ...(data.endDate !== undefined && { endDate: data.endDate as any }),
     ...(data.startTime !== undefined && { startTime: data.startTime }),
     ...(data.endTime !== undefined && { endTime: data.endTime }),
     ...(data.purpose !== undefined && { purpose: data.purpose }),
@@ -339,7 +371,7 @@ export async function cancelBooking(id: number, user: AuthUser) {
 
   if (user.role !== 'admin') {
     if (booking.userId !== user.id) throw new Error('Not your booking')
-    const bookingStart = new Date(`${booking.bookingDate}T${booking.startTime}`)
+    const bookingStart = new Date(`${normalizeDate(booking.bookingDate)}T${booking.startTime}`)
     const cancelDeadline = new Date(bookingStart.getTime() - CANCEL_BEFORE_HOURS * 60 * 60 * 1000)
     if (new Date() > cancelDeadline) {
       throw new Error(`Cannot cancel less than ${CANCEL_BEFORE_HOURS} hours before start time`)
@@ -359,7 +391,7 @@ export async function checkIn(id: number, userId: number) {
   if (booking.checkedIn) throw new Error('Already checked in')
 
   const now = new Date()
-  const bookingStart = new Date(`${booking.bookingDate}T${booking.startTime}`)
+  const bookingStart = new Date(`${normalizeDate(booking.bookingDate)}T${booking.startTime}`)
   const graceEnd = new Date(bookingStart.getTime() + CHECKIN_GRACE_MINUTES * 60 * 1000)
   if (now > graceEnd) throw new Error('Check-in grace period has expired')
 
@@ -386,7 +418,9 @@ export async function revertBooking(id: number, targetStatus: string) {
 
   // If reverting to approved, check for time conflicts
   if (targetStatus === 'approved') {
-    const conflict = await checkConflict(booking.roomId, booking.bookingDate, booking.startTime, booking.endTime, id)
+    const startDate = normalizeDate(booking.bookingDate)
+    const endDate = normalizeDate(booking.endDate ?? booking.bookingDate)
+    const conflict = await checkConflict(booking.roomId, startDate, endDate, booking.startTime, booking.endTime, id)
     if (conflict) throw new Error('ไม่สามารถย้อนกลับได้: มีการจองอื่นทับซ้อนในช่วงเวลานี้')
   }
 
@@ -401,9 +435,10 @@ export async function revertBooking(id: number, targetStatus: string) {
 // ─── Calendar View ───────────────────────────────────
 
 export async function getCalendar(params: { roomId?: number; dateFrom: string; dateTo: string }) {
+  // Range overlap: bookings intersecting [dateFrom..dateTo]
   const conditions: any[] = [
-    sql`${bookings.bookingDate} >= ${params.dateFrom}`,
     sql`${bookings.bookingDate} <= ${params.dateTo}`,
+    sql`${bookings.endDate} >= ${params.dateFrom}`,
     sql`${bookings.status} IN ('pending', 'approved')`,
   ]
   if (params.roomId) conditions.push(eq(bookings.roomId, params.roomId))
@@ -414,6 +449,7 @@ export async function getCalendar(params: { roomId?: number; dateFrom: string; d
       userId: bookings.userId,
       roomId: bookings.roomId,
       bookingDate: bookings.bookingDate,
+      endDate: bookings.endDate,
       startTime: bookings.startTime,
       endTime: bookings.endTime,
       purpose: bookings.purpose,
@@ -468,7 +504,7 @@ export async function createRecurringBooking(data: {
   const skippedDates: string[] = []
 
   for (const date of dates) {
-    const conflict = await checkConflict(data.roomId, date, data.startTime, data.endTime)
+    const conflict = await checkConflict(data.roomId, date, date, data.startTime, data.endTime)
     if (conflict) {
       skippedDates.push(date)
       continue
@@ -478,6 +514,7 @@ export async function createRecurringBooking(data: {
       userId: data.userId,
       roomId: data.roomId,
       bookingDate: date as any,
+      endDate: date as any,
       startTime: data.startTime,
       endTime: data.endTime,
       purpose: data.purpose,

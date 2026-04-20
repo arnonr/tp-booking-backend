@@ -67,6 +67,7 @@ export const bookings = mysqlTable('bookings', {
   userId: int('user_id').notNull(),
   roomId: int('room_id').notNull(),
   bookingDate: date('booking_date').notNull(),
+  endDate: date('end_date').notNull(),
   startTime: time('start_time').notNull(),
   endTime: time('end_time').notNull(),
   purpose: varchar('purpose', { length: 500 }).notNull(),

@@ -164,6 +164,7 @@ export async function getRoomAvailability(roomId: number, date: string) {
   const [room] = await db.select().from(rooms).where(eq(rooms.id, roomId)).limit(1) as any
   if (!room) return null
 
+  // Availability on a specific date: include any booking whose range covers it (multi-day aware)
   const bookedSlots = await db.select({
     startTime: bookings.startTime,
     endTime: bookings.endTime,
@@ -171,7 +172,8 @@ export async function getRoomAvailability(roomId: number, date: string) {
   }).from(bookings).where(
     and(
       eq(bookings.roomId, roomId),
-      sql`${bookings.bookingDate} = ${date}`,
+      sql`${bookings.bookingDate} <= ${date}`,
+      sql`${bookings.endDate} >= ${date}`,
       sql`${bookings.status} IN ('pending', 'approved')`,
     )
   ) as any
